@@ -13,11 +13,11 @@ struct Table {
   std::string currentClient;
   system_clock::time_point startTime;
   unsigned sum = 0;
-  unsigned totalUsage;
+  unsigned totalUsage = 0;
   unsigned pricePerHour;
 
   Table() = default;
-  explicit Table(unsigned price_) : pricePerHour(price_), totalUsage(0) {}
+  explicit Table(unsigned price_) : pricePerHour(price_) {}
 
   void begin_usage(const std::string& client, system_clock::time_point time) {
     currentClient = client;
@@ -75,6 +75,8 @@ class Club {
     for (unsigned i = 1; i <= tableAmount; ++i) {
       tables.emplace(i, Table(price));
     }
+    auto temp = system_clock::to_time_t(openTime);
+    std::cout << std::put_time(std::localtime(&temp), "%H:%M") << std::endl;
   }
 
   // void check_event();

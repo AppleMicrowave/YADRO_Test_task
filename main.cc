@@ -8,16 +8,6 @@
 #include "classes.h"
 using namespace std::chrono;
 
-// ШАБЛОН:
-
-//                       КОЛ-ВО СТОЛОВ
-
-//              ВРЕМЯ НАЧАЛА   |   ВРЕМЯ ОКОНЧАНИЯ
-
-//                      СТОИМОСТЬ ЧАСА
-
-// ВРЕМЯ СОБЫТИЯ N | ИДЕНТИФИКАТОР СО БЫТИЯ N | ТЕЛО СОБЫТИЯ N
-
 // Read event
 // TODO add last checks and move checks to check_event func
 Event::Event(const std::string& line) {
@@ -42,7 +32,8 @@ Event::Event(const std::string& line) {
   if (!std::regex_match(client.name, nameFilter)) {
     throw std::exception();
   }
-  type = static_cast<InEventEnum>(std::stoi(id));
+  type = std::stoi(id);
+  if (type < 1 || type > 13) throw std::exception();
 
   // TODO: check if table is >< than setted;
   ss >> table;
@@ -57,8 +48,6 @@ void Table::calculate(system_clock::time_point endTime) {
     currentClient.clear();
   }
 }
-
-void Event::check_event() {}
 
 void Event::print_event() {
   auto temp = system_clock::to_time_t(eventTime);
@@ -84,14 +73,42 @@ unsigned Club::find_free_table() {
 }
 
 void Club::close() {
-  for (const auto& [name, client] : clients) {
+  std::vector<std::string> clientNames;
+  for (const auto& [name, _] : clients) {
+    clientNames.push_back(name);
+  }
+  std::sort(clientNames.begin(), clientNames.end());
+
+  for (const auto& name : clientNames) {
+    if (!clients.contains(name)) continue;
+
+    Client client = clients[name];
+    if (client.table != 0) {
+      tables[client.table].calculate(closeTime);
+    }
+
     Event leaveEvent{closeTime, LEAVE_O, client, 0};
     handle_event(leaveEvent);
+  }
+
+  auto temp = system_clock::to_time_t(closeTime);
+  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << std::endl;
+
+  for (unsigned i = 1; i <= tableAmount; ++i) {
+    unsigned minutes = tables[i].totalUsage;
+    unsigned hours = minutes / 60;
+    unsigned remainingMinutes = minutes % 60;
+    std::cout << i << " " << tables[i].sum << " " << std::setfill('0')
+              << std::setw(2) << hours << ":" << std::setfill('0')
+              << std::setw(2) << remainingMinutes << std::endl;
   }
 }
 
 // For any InEvent
 void Club::handle_event(Event& event) {
+  // ugly crutch
+  if (event.table > tableAmount) throw std::exception();
+
   std::string& aName = event.client.name;
   switch (event.type) {
     case ARRIVED_I: {  // 1
@@ -173,50 +190,66 @@ void Club::handle_event(Event& event) {
     default:
       break;
   }
-  // if (event.error.empty()) handle_event(event.type);
   event.print_event();
 }
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    std::cerr << "Error! Please specify filename: ./exe 'file' \n";
+    std::cerr << "Error! Please specify filename: ./exe 'file'\n";
     return 1;
   }
 
   std::ifstream f_input{argv[1]};
   if (f_input.fail()) {
-    std::cerr << "Cannot open file: \n" << argv[1];
+    std::cerr << "Cannot open file: " << argv[1] << "\n";
     return 2;
   }
 
   std::string read_buffer;
-
   unsigned table_amount;
   unsigned price;
+  std::tm open_tm = {}, close_tm = {};
 
-  // read table amount
-  std::getline(f_input, read_buffer);
+  // ---------- Read table amount ----------
+  if (!std::getline(f_input, read_buffer)) {
+    std::cout << read_buffer << std::endl;
+    return 3;
+  }
+  try {
+    table_amount = stoul(read_buffer);
+    if (table_amount == 0) throw std::exception();
+  } catch (...) {
+    std::cout << read_buffer << std::endl;
+    return 3;
+  }
 
-  table_amount = std::stoul(read_buffer);
+  // ---------- Read working hours ----------
+  if (!std::getline(f_input, read_buffer)) {
+    std::cout << "Missing working hours line\n";
+    return 3;
+  }
+  std::stringstream ss_time(read_buffer);
+  ss_time >> std::get_time(&open_tm, "%H:%M");
+  ss_time >> std::get_time(&close_tm, "%H:%M");
+  if (ss_time.fail()) {
+    std::cout << read_buffer << std::endl;
+    return 3;
+  }
 
-  // read hours
-  std::getline(f_input, read_buffer);
+  auto openT = system_clock::from_time_t(mktime(&open_tm));
+  auto closeT = system_clock::from_time_t(mktime(&close_tm));
 
-  std::stringstream ss_time_buffer(read_buffer);
-  std::tm open_tm = {};
-  std::tm close_tm = {};
-
-  ss_time_buffer >> std::get_time(&open_tm, "%H:%M");
-  ss_time_buffer >> std::get_time(&close_tm, "%H:%M");
-
-  system_clock::time_point openT =
-      system_clock::from_time_t(std::mktime(&open_tm));
-  system_clock::time_point closeT =
-      system_clock::from_time_t(std::mktime(&close_tm));
-
-  // read price per hour
-  std::getline(f_input, read_buffer);
-  price = std::stoul(read_buffer);
+  if (!std::getline(f_input, read_buffer)) {
+    std::cout << "Missing price line\n";
+    return 3;
+  }
+  try {
+    price = stoul(read_buffer);
+    if (price == 0) throw std::exception();
+  } catch (...) {
+    std::cout << read_buffer << std::endl;
+    return 3;
+  }
 
   Club clubOperator{openT, closeT, price, table_amount};
 
@@ -224,7 +257,6 @@ int main(int argc, char* argv[]) {
     if (read_buffer.empty()) continue;
     try {
       Event event(read_buffer);
-      // std::cout << "Line: " << read_buffer << std::endl;
       clubOperator.handle_event(event);
     } catch (const std::exception& e) {
       std::cout << read_buffer << std::endl;

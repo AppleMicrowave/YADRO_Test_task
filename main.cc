@@ -1,4 +1,4 @@
-#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -48,6 +48,16 @@ Event::Event(const std::string& line) {
   ss >> table;
 }
 
+void Table::calculate(system_clock::time_point endTime) {
+  if (!currentClient.empty()) {
+    auto duration = duration_cast<minutes>(endTime - startTime).count();
+    totalUsage += duration;
+    unsigned hours = std::ceil(static_cast<double>(duration) / 60.0);
+    sum += hours * pricePerHour;
+    currentClient.clear();
+  }
+}
+
 void Event::check_event() {}
 
 void Event::print_event() {
@@ -62,15 +72,22 @@ void Event::print_event() {
 
 void Event::print_error() {
   auto temp = system_clock::to_time_t(eventTime);
-  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << " " << "13"
+  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << " " << ERR_O
             << " " << error << std::endl;
 }
 
 unsigned Club::find_free_table() {
-  for (unsigned i = 1; i <= tableAmount; ++i) {
-    if (tables[i].empty()) return i;
+  for (auto& [number, table] : tables) {
+    if (table.currentClient.empty()) return number;
   }
   return 0;
+}
+
+void Club::close() {
+  for (const auto& [name, client] : clients) {
+    Event leaveEvent{closeTime, LEAVE_O, client, 0};
+    handle_event(leaveEvent);
+  }
 }
 
 // For any InEvent
@@ -84,7 +101,6 @@ void Club::handle_event(Event& event) {
         event.error = "NotOpenYet";
       } else {
         clients[aName] = event.client;
-        event.client.isIn = true;
       }
 
       break;
@@ -92,20 +108,23 @@ void Club::handle_event(Event& event) {
     case SIT_I: {  // 2
       if (!clients.contains(aName)) {
         event.error = "ClientUnknown";
-      } else if (!tables[event.table].empty() ||
+      } else if (!tables[event.table].currentClient.empty() ||
                  (event.table == clients[aName].table)) {
         event.error = "PlaceIsBusy";
       } else {
+        // remind to fix here
+        if (clients[aName].table != 0) {
+          tables[clients[aName].table].calculate(event.eventTime);
+        }
         clients[aName].table = event.table;
-        clients[aName].isPlaying = true;
-        tables[event.table] = aName;
+        tables[event.table].begin_usage(aName, event.eventTime);
       }
       break;
     }
     case WAITING_I: {  // 3
       unsigned free_table = find_free_table();
       if (clientQueue.size() + 1 > tableAmount) {
-        Event outEvent{event.eventTime, LEAVE_O, event.client, event.table};
+        Event outEvent{event.eventTime, LEAVE_O, event.client, 0};
         event.print_event();
         handle_event(outEvent);
         return;
@@ -121,7 +140,8 @@ void Club::handle_event(Event& event) {
         event.error = "ClientUnknown";
       } else {
         unsigned freed_table = clients[aName].table;
-        tables[freed_table] = "";  // freeing the table
+        tables[freed_table].calculate(
+            event.eventTime);  // freeing the table and summing the value
 
         clients.erase(aName);  // client is gone
         event.print_event();
@@ -130,22 +150,25 @@ void Club::handle_event(Event& event) {
           Client nextclient = clientQueue.front();
           clientQueue.pop();
 
-          clients[nextclient.name] = nextclient;
-          clients[nextclient.name].table = freed_table;
-          tables[freed_table] = nextclient.name;
-
           Event outEvent{event.eventTime, SIT_O, nextclient, freed_table};
-          outEvent.print_event();
+          handle_event(outEvent);
         }
         return;
       }
       break;
     }
     case LEAVE_O: {  // 11
+      if (clients.contains(aName) && clients[aName].table != 0) {
+        tables[clients[aName].table].calculate(event.eventTime);
+      }
       clients.erase(aName);
       break;
     }
     case SIT_O: {  // 12
+      clients[aName].table = event.table;
+      tables[event.table].begin_usage(aName, event.eventTime);
+      event.print_event();
+      return;
     }
     default:
       break;
@@ -208,6 +231,8 @@ int main(int argc, char* argv[]) {
       return 3;
     }
   }
+
+  clubOperator.close();
 
   return 0;
 }

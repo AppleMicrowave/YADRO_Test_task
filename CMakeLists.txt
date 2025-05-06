@@ -4,4 +4,4 @@ project(MyProject)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(MyProject main.cc)
+add_executable(MyProject main.cc classes.h)

@@ -3,41 +3,55 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+using namespace std::chrono;
 
-enum InEvent { ARRIVED_I = 1, SIT_I, WAITING_I, LEAVE_I };
-enum OutEvent { LEAVE_O = 11, SIT_O, ERR_O };
+enum InEventEnum { ARRIVED_I = 1, SIT_I, WAITING_I, LEAVE_I };
+enum OutEventEnum { LEAVE_O = 11, SIT_O, ERR_O };
 
 struct Client {
   std::string name;
-  bool isIn;
-  bool is
+  bool isIn = false;
+  bool isPlaying = false;
+  unsigned table = 0;
+
+  // bool operator<(const Client& target) const { return name < target.name; }
 };
 
 struct Event {
-  std::chrono::system_clock::time_point eventTime;
-  int type;
-  Client client;
-  unsigned table = 0;
+  system_clock::time_point eventTime;  // <время>
+  int type = 0;                        // <id>
+  Client client;                       // <клиент>
+  unsigned table = 0;                  // <стол*>
 
   std::string error;
+  // std::string outEvent;
 
   explicit Event(const std::string& line);
   void print_event();
+  void print_error();
 };
 
 class Club {
  private:
-  std::chrono::system_clock::time_point openTime;
-  std::chrono::system_clock::time_point closeTime;
-  int pricePerHour;
+  system_clock::time_point openTime;
+  system_clock::time_point closeTime;
+  unsigned pricePerHour;
+  unsigned tableAmount;
 
   std::queue<Client> queue;
-  std::set<Client> clients;
-  std::unordered_map<int, bool> tables;
+  std::map<std::string, Client> clients;
+  std::unordered_map<unsigned, std::string> tables;
 
  public:
+  explicit Club(system_clock::time_point open, system_clock::time_point close,
+                unsigned price, unsigned amount)
+      : openTime(open),
+        closeTime(close),
+        pricePerHour(price),
+        tableAmount(amount) {}
 
-    Client()
-
+  // void check_event();
   void handle_event(Event& event);
+
+  bool has_free_table();
 };

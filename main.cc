@@ -18,7 +18,7 @@ using namespace std::chrono;
 // ВРЕМЯ СОБЫТИЯ N | ИДЕНТИФИКАТОР СО БЫТИЯ N | ТЕЛО СОБЫТИЯ N
 
 // Read event
-// TODO add last checks
+// TODO add last checks and move checks to separate func
 Event::Event(const std::string& line) {
   std::stringstream ss(line);
   std::string timeStr, id, tableNumber;
@@ -41,28 +41,56 @@ Event::Event(const std::string& line) {
   if (!std::regex_match(client.name, nameFilter)) {
     throw std::exception();
   }
-  type = static_cast<InEvent>(std::stoi(id));
+  type = static_cast<InEventEnum>(std::stoi(id));
 
+  // TODO: check if table is >< than setted;
   ss >> table;
 }
 
 void Event::print_event() {
   auto temp = system_clock::to_time_t(eventTime);
-  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << " " << type
-            << " " << client.name;
-  if (table != 0)
-    std::cout << " " << table << std::endl;
-  else
-    std::cout << std::endl;
+  std::cout << std::put_time(std::localtime(&temp), "%H:%M");
+  std::cout << " " << type << " " << client.name
+            << (table == 0 ? "" : " " + std::to_string(table)) << std::endl;
+
+  // If error field is not empty, need to print
+  if (!error.empty()) print_error();
+}
+
+void Event::print_error() {
+  auto temp = system_clock::to_time_t(eventTime);
+  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << " " << "13"
+            << " " << error << std::endl;
 }
 
 // For any InEvent
 void Club::handle_event(Event& event) {
+  std::string& aName = event.client.name;
   switch (event.type) {
-    case 1: {
-      if (clients.contains(event.client))
+    case ARRIVED_I: {
+      if (clients.contains(aName)) {
+        event.error = "YouShallNotPass";
+      } else if (event.eventTime < openTime || event.eventTime > closeTime) {
+        event.error = "NotOpenYet";
+      } else {
+        clients[aName] = event.client;
+        event.client.isIn = true;
+      }
+
+      break;
     }
-    case 2: {
+    case SIT_I: {
+      if (!clients.contains(aName)) {
+        event.error = "ClientUnknown";
+      } else if (!tables[event.table].empty() ||
+                 (event.table == clients[aName].table)) {
+        event.error = "PlaceIsBusy";
+      } else {
+        clients[aName].table = event.table;
+        clients[aName].isPlaying = true;
+        tables[event.table] = aName;
+      }
+      break;
     }
     case 3: {
     }
@@ -71,10 +99,17 @@ void Club::handle_event(Event& event) {
     default:
       break;
   }
+  // if (event.error.empty()) handle_event(event.type);
+  event.print_event();
 }
 
-// OutEvent: ERR_O
-void print_error() {}
+// void Club::handle_event(unsigned type) {
+//   switch (type) {
+//     case 1: {
+//       clients[e]
+//     }
+//   }
+// }
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
@@ -82,9 +117,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::ifstream f_input;
-
-  f_input.open(argv[1]);
+  std::ifstream f_input{argv[1]};
   if (f_input.fail()) {
     std::cerr << "Cannot open file: \n" << argv[1];
     return 2;
@@ -99,33 +132,34 @@ int main(int argc, char* argv[]) {
   std::getline(f_input, read_buffer);
 
   table_amount = std::stoul(read_buffer);
-  std::cout << table_amount << std::endl;
 
   // read hours
   std::getline(f_input, read_buffer);
 
   std::stringstream ss_time_buffer(read_buffer);
-  std::tm t_begin = {};
-  std::tm t_end = {};
+  std::tm open_tm = {};
+  std::tm close_tm = {};
 
-  ss_time_buffer >> std::get_time(&t_begin, "%H:%M");
-  // note: get_time moves buf to end of format
-  ss_time_buffer >> std::get_time(&t_end, "%H:%M");
+  ss_time_buffer >> std::get_time(&open_tm, "%H:%M");
+  ss_time_buffer >> std::get_time(&close_tm, "%H:%M");
 
-  std::cout << std::put_time(&t_begin, "%H:%M") << " "
-            << std::put_time(&t_end, "%H:%M") << std::endl;
+  system_clock::time_point openT =
+      system_clock::from_time_t(std::mktime(&open_tm));
+  system_clock::time_point closeT =
+      system_clock::from_time_t(std::mktime(&close_tm));
 
   // read price per hour
   std::getline(f_input, read_buffer);
   price = std::stoul(read_buffer);
 
-  std::cout << price << std::endl;
+  Club clubOperator{openT, closeT, price, table_amount};
 
   while (std::getline(f_input, read_buffer)) {
+    if (read_buffer.empty()) continue;
     try {
       Event event(read_buffer);
       // std::cout << "Line: " << read_buffer << std::endl;
-      event.print_event();
+      clubOperator.handle_event(event);
     } catch (const std::exception& e) {
       std::cout << read_buffer << std::endl;
       return 3;

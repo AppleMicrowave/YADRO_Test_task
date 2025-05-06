@@ -19,7 +19,7 @@ struct Client {
 
 struct Event {
   system_clock::time_point eventTime;  // <время>
-  int type = 0;                        // <id>
+  unsigned type = 0;                   // <id>
   Client client;                       // <клиент>
   unsigned table = 0;                  // <стол*>
 
@@ -27,6 +27,11 @@ struct Event {
   // std::string outEvent;
 
   explicit Event(const std::string& line);
+  explicit Event(system_clock::time_point time_, unsigned type_,
+                 Client& client_, unsigned table_)
+      : eventTime(time_), type(type_), client(client_), table(table_) {}
+
+  void check_event();
   void print_event();
   void print_error();
 };
@@ -38,7 +43,7 @@ class Club {
   unsigned pricePerHour;
   unsigned tableAmount;
 
-  std::queue<Client> queue;
+  std::queue<Client> clientQueue;
   std::map<std::string, Client> clients;
   std::unordered_map<unsigned, std::string> tables;
 
@@ -53,5 +58,5 @@ class Club {
   // void check_event();
   void handle_event(Event& event);
 
-  bool has_free_table();
+  unsigned find_free_table();
 };

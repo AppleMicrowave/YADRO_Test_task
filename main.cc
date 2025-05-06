@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -18,7 +19,7 @@ using namespace std::chrono;
 // ВРЕМЯ СОБЫТИЯ N | ИДЕНТИФИКАТОР СО БЫТИЯ N | ТЕЛО СОБЫТИЯ N
 
 // Read event
-// TODO add last checks and move checks to separate func
+// TODO add last checks and move checks to check_event func
 Event::Event(const std::string& line) {
   std::stringstream ss(line);
   std::string timeStr, id, tableNumber;
@@ -47,6 +48,8 @@ Event::Event(const std::string& line) {
   ss >> table;
 }
 
+void Event::check_event() {}
+
 void Event::print_event() {
   auto temp = system_clock::to_time_t(eventTime);
   std::cout << std::put_time(std::localtime(&temp), "%H:%M");
@@ -63,11 +66,18 @@ void Event::print_error() {
             << " " << error << std::endl;
 }
 
+unsigned Club::find_free_table() {
+  for (unsigned i = 1; i <= tableAmount; ++i) {
+    if (tables[i].empty()) return i;
+  }
+  return 0;
+}
+
 // For any InEvent
 void Club::handle_event(Event& event) {
   std::string& aName = event.client.name;
   switch (event.type) {
-    case ARRIVED_I: {
+    case ARRIVED_I: {  // 1
       if (clients.contains(aName)) {
         event.error = "YouShallNotPass";
       } else if (event.eventTime < openTime || event.eventTime > closeTime) {
@@ -79,7 +89,7 @@ void Club::handle_event(Event& event) {
 
       break;
     }
-    case SIT_I: {
+    case SIT_I: {  // 2
       if (!clients.contains(aName)) {
         event.error = "ClientUnknown";
       } else if (!tables[event.table].empty() ||
@@ -92,9 +102,50 @@ void Club::handle_event(Event& event) {
       }
       break;
     }
-    case 3: {
+    case WAITING_I: {  // 3
+      unsigned free_table = find_free_table();
+      if (clientQueue.size() + 1 > tableAmount) {
+        Event outEvent{event.eventTime, LEAVE_O, event.client, event.table};
+        event.print_event();
+        handle_event(outEvent);
+        return;
+      } else if (free_table) {
+        event.error = "ICanWaitNoLonger!";
+      } else {
+        clientQueue.push(event.client);
+      }
+      break;
     }
-    case 4: {
+    case LEAVE_I: {  // 4
+      if (!clients.contains(aName)) {
+        event.error = "ClientUnknown";
+      } else {
+        unsigned freed_table = clients[aName].table;
+        tables[freed_table] = "";  // freeing the table
+
+        clients.erase(aName);  // client is gone
+        event.print_event();
+
+        if (!clientQueue.empty()) {
+          Client nextclient = clientQueue.front();
+          clientQueue.pop();
+
+          clients[nextclient.name] = nextclient;
+          clients[nextclient.name].table = freed_table;
+          tables[freed_table] = nextclient.name;
+
+          Event outEvent{event.eventTime, SIT_O, nextclient, freed_table};
+          outEvent.print_event();
+        }
+        return;
+      }
+      break;
+    }
+    case LEAVE_O: {  // 11
+      clients.erase(aName);
+      break;
+    }
+    case SIT_O: {  // 12
     }
     default:
       break;
@@ -102,14 +153,6 @@ void Club::handle_event(Event& event) {
   // if (event.error.empty()) handle_event(event.type);
   event.print_event();
 }
-
-// void Club::handle_event(unsigned type) {
-//   switch (type) {
-//     case 1: {
-//       clients[e]
-//     }
-//   }
-// }
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {

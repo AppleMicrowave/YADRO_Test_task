@@ -1,10 +1,11 @@
-#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <queue>
 #include <regex>
 #include <sstream>
+
+#include "classes.h"
+using namespace std::chrono;
 
 // ШАБЛОН:
 
@@ -16,32 +17,13 @@
 
 // ВРЕМЯ СОБЫТИЯ N | ИДЕНТИФИКАТОР СО БЫТИЯ N | ТЕЛО СОБЫТИЯ N
 
-struct Client {};
-
-enum InEvent { ARRIVED_I = 1, SIT_I, WAITING_I, LEAVE_I };
-enum OutEvent { LEAVE_O = 11, SIT_O, ERR_O };
-
-class Club {
- private:
-  size_t tables;
-  std::queue<Client> queue;
-};
-
-struct Event {
-  std::tm eventTime;
-  InEvent type;
-  std::string client;
-  unsigned table = 0;
-
-  Event(const std::string& line);
-  void print_event();
-};
-
 // Read event
+// TODO add last checks
 Event::Event(const std::string& line) {
   std::stringstream ss(line);
   std::string timeStr, id, tableNumber;
   const std::regex timeFilter{R"(^(?:[01]\d|2[0-3]):[0-5]\d$)"};
+  const std::regex nameFilter{R"(^[a-z0-9_-]+$)"};
 
   ss >> timeStr;
   if (!std::regex_match(timeStr, timeFilter)) {
@@ -51,17 +33,23 @@ Event::Event(const std::string& line) {
   ss.clear();
   ss.str(line);
 
-  ss >> std::get_time(&eventTime, "%H:%M");
+  std::tm temp{};
+  ss >> std::get_time(&temp, "%H:%M");
+  eventTime = system_clock::from_time_t(std::mktime(&temp));
 
-  ss >> id >> client;
+  ss >> id >> client.name;
+  if (!std::regex_match(client.name, nameFilter)) {
+    throw std::exception();
+  }
   type = static_cast<InEvent>(std::stoi(id));
 
   ss >> table;
 }
 
 void Event::print_event() {
-  std::cout << std::put_time(&eventTime, "%H:%M") << " " << type << " "
-            << client;
+  auto temp = system_clock::to_time_t(eventTime);
+  std::cout << std::put_time(std::localtime(&temp), "%H:%M") << " " << type
+            << " " << client.name;
   if (table != 0)
     std::cout << " " << table << std::endl;
   else
@@ -69,7 +57,21 @@ void Event::print_event() {
 }
 
 // For any InEvent
-void handle_event() {}
+void Club::handle_event(Event& event) {
+  switch (event.type) {
+    case 1: {
+      if (clients.contains(event.client))
+    }
+    case 2: {
+    }
+    case 3: {
+    }
+    case 4: {
+    }
+    default:
+      break;
+  }
+}
 
 // OutEvent: ERR_O
 void print_error() {}
